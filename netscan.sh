@@ -21,8 +21,11 @@ else
   interface=$1
 fi
 
-echo "Starting Netscan on $interface"
+# ¨Prepare system for scanning
+# Alter DHCP timeouts
+sed -i  -e s/"#timeout 60"/"timeout 10"/ -e s/"#retry 60"/"retry 10"/ /etc/dhcp/dhclient.conf
 
+echo "Starting Netscan on $interface"
 
 # Set interface up
 if [ $(cat /sys/class/net/$interface/operstate) = "down" ]; then
@@ -37,18 +40,33 @@ dhclient -r $interface
 
 # Request ip address from DHCP server
 echo "Requesting ip address from DHCP server"
-dhclient $interface -v
+dhclient -4 $interface -v
 
-# TODO: Check if DHCP Succeeded
-# Get ip address from ip command
-if [ $? -ne 0 ]; then
+# Check for successful DHCP request
+ip=$(ip addr show $interface | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+
+if [ -z "$ip" ]; then
   echo "Could not get ip address from DHCP server"
   exit 1
 else
-  ip=$(ip addr show $interface | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-  echo "Got ip address $ip"
-  echo "Routes: " $(ip route show dev $interface)
+  gateway=$(ip route show 0.0.0.0/0 dev $interface | cut -d\  -f3)
+  echo "Ip: $ip"
+  echo "Gateway: $gateway"
 fi
 
-# TODO: Ping test gateway
-# TODO: Ping test internet
+# Ping test gateway
+if ping -q -c 1 -W 1 $gateway >/dev/null; then
+  echo "IPv4 is up"
+else
+  echo "IPv4 is down"
+fi
+
+# Ping test google.com
+if ping -q -c 1 -W 1 www.google.com >/dev/null; then
+  echo "Internet connectivity is up"
+else
+  echo "Internet connectivity is down"
+fi
+
+# Restore Files to original state
+sed -i  -e s/"timeout 10"/"#timeout 60"/ -e s/"retry 10"/"#retry 60"/ /etc/dhcp/dhclient.conf
