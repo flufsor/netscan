@@ -13,3 +13,6 @@ Execute the script with:
 ## Requirements
 
 This script requires root access and is tested on debian.
+Required packages are:
+
+- tcpdump
