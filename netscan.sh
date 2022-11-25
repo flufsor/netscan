@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-DUMP_AMOUNT=20
+TCPDUMP_TIMEOUT=60
 
 function request_dhcp_address()
 {
@@ -53,7 +53,7 @@ else
   interface=$1
 fi
 
-# ¨Prepare system for scanning
+# Prepare system for scanning
 # Alter DHCP timeouts
 sed -i  -e s/"#timeout 60"/"timeout 10"/ -e s/"#retry 60"/"retry 10"/ /etc/dhcp/dhclient.conf
 
@@ -64,11 +64,13 @@ if [ $(cat /sys/class/net/$interface/operstate) = "down" ]; then
   echo "Setting $interface up"
   ip link set $interface up
   echo boo
+else 
+  echo "Interface $interface is already up"
 fi
 
-# TODO: Fix infinite waiting for tcpdump
 # Scan for VLANs
-tcpdump -nn -e vlan -i $interface -C $DUMP_AMOUNT > scans/tcpdump-$interface.log 2> /dev/null
+echo "Starting VLAN scan for $TCPDUMP_TIMEOUT seconds"
+timeout $TCPDUMP_TIMEOUT tcpdump -nn -e vlan -i $interface > scans/tcpdump-$interface.log 2>/dev/null
 mapfile -t result < <(cat scans/tcpdump-$interface.log  | grep -oP '(?:vlan )([0-9])+' | awk '{print $2}' | sort -nu)
 
 if [ ${#result[@]} -ne 0 ]; then
