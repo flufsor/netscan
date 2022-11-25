@@ -1,22 +1,11 @@
 #!/usr/bin/env bash
+# title         : netscan.sh
+# description   : A Network port scanner for linux.
+# author        : Tom Goedemé https://github.com/flufsor
+# usage         : ./netscan.sh [interface]
+# ======================================================================================================================
 
 TCPDUMP_TIMEOUT=60
-
-function request_dhcp_address()
-{
-  echo -e "\tTrying DHCP"
-  # Request ip address from DHCP server
-  timeout 1 dhclient -d -1 $1 &>/dev/null
-
-  # Check for successful DHCP request
-  ip=$(ip addr show $1 | grep "inet " | awk '{print $2}')
-
-  if [ -z "$ip" ]; then
-    echo -e "\tCould not get ip address from DHCP server"
-  else
-    echo -e "\tGot ip: $ip"
-  fi
-}
 
 function test_connection()
 {
@@ -46,9 +35,6 @@ else
   interface=$1
 fi
 
-# Alter DHCP timeouts
-sed -i  -e s/"#timeout 60"/"timeout 1"/ -e s/"#retry 60"/"retry 1"/ /etc/dhcp/dhclient.conf
-
 echo "Starting Netscan on $interface"
 
 # Set interface up
@@ -69,7 +55,7 @@ if [ ${#vlans[@]} -ne 0 ]; then
   echo "VLANs found:"
 
   for vlan in "${vlans[@]}"; do
-    echo -e "\t -VLAN: $vlan"
+    echo -e "\t-VLAN: $vlan"
   done
 
   for vlan in "${vlans[@]}"; do
@@ -77,11 +63,19 @@ if [ ${#vlans[@]} -ne 0 ]; then
 
     # Set interface up
     ip link add link $interface name $interface.$vlan type vlan id $vlan >/dev/null 2>&1
-    request_dhcp_address $interface.$vlan
+    # Requst DHCP address
+    timeout 2 dhclient -cf ./dhclient.conf -d -1 $interface.$vlan &>/dev/null
+    # Check for successful DHCP request
+    ip=$(ip addr show $interface.$vlan | grep "inet " | awk '{print $2}')
+
+    if [ -z "$ip" ]; then
+      echo -e "\tCould not get ip address from DHCP server"
+      echo -e "\tRunning manual IP scan"
+    else
+      echo -e "\tGot DHCP ip: $ip"
+    fi
   done
 else
-  echo "No VLANs found"
+  echo "No VLANs found, trying native vlan"
+  request_dhcp_address $interface
 fi
-
-# Restore Files to original state
-sed -i  -e s/"timeout 10"/"#timeout 60"/ -e s/"retry 10"/"#retry 60"/ /etc/dhcp/dhclient.conf
