@@ -17,3 +17,8 @@ Required packages are:
 
 - tcpdump
 - dhclient
+
+## Credits:
+
+-Tom Goedemé
+-Jasper van Meel (AWK held)

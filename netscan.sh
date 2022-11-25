@@ -4,35 +4,28 @@ TCPDUMP_TIMEOUT=60
 
 function request_dhcp_address()
 {
-    echo "Requesting DHCP address for interface $interface"
-    dhclient -v $interface
+  echo -e "\tTrying DHCP"
+  # Request ip address from DHCP server
+  timeout 1 dhclient -d -1 $1 &>/dev/null
 
-    # Remove old DHCP lease
-    echo "Removing old DHCP lease"
-    dhclient -r $interface
+  # Check for successful DHCP request
+  ip=$(ip addr show $1 | grep "inet " | awk '{print $2}')
 
-    # Request ip address from DHCP server
-    echo "Requesting ip address from DHCP server"
-    dhclient -4 $interface -v
+  if [ -z "$ip" ]; then
+    echo -e "\tCould not get ip address from DHCP server"
+  else
+    echo -e "\tGot ip: $ip"
+  fi
+}
 
-    # Check for successful DHCP request
-    ip=$(ip addr show $interface | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-
-    if [ -z "$ip" ]; then
-      echo "Could not get ip address from DHCP server"
-      exit 1
-    else
-      gateway=$(ip route show 0.0.0.0/0 dev $interface | cut -d\  -f3)
-      echo "Ip: $ip"
-      echo "Gateway: $gateway"
-    fi
-
-    # Ping test gateway
-    if ping -q -c 1 -W 1 "$gateway" >/dev/null; then
-      echo "IPv4 is up"
-    else
-      echo "IPv4 is down"
-    fi
+function test_connection()
+{
+  # Ping test gateway
+  if ping -q -c 1 -W 1 "$1" >/dev/null; then
+    echo "IPv4 is up"
+  else
+    echo "IPv4 is down"
+  fi
 }
 
 # Check if the user is root
@@ -53,9 +46,8 @@ else
   interface=$1
 fi
 
-# Prepare system for scanning
 # Alter DHCP timeouts
-sed -i  -e s/"#timeout 60"/"timeout 10"/ -e s/"#retry 60"/"retry 10"/ /etc/dhcp/dhclient.conf
+sed -i  -e s/"#timeout 60"/"timeout 1"/ -e s/"#retry 60"/"retry 1"/ /etc/dhcp/dhclient.conf
 
 echo "Starting Netscan on $interface"
 
@@ -71,13 +63,21 @@ fi
 # Scan for VLANs
 echo "Starting VLAN scan for $TCPDUMP_TIMEOUT seconds"
 timeout $TCPDUMP_TIMEOUT tcpdump -nn -e vlan -i $interface > scans/tcpdump-$interface.log 2>/dev/null
-mapfile -t result < <(cat scans/tcpdump-$interface.log  | grep -oP '(?:vlan )([0-9])+' | awk '{print $2}' | sort -nu)
+mapfile -t vlans < <(cat scans/tcpdump-$interface.log  | grep -oP '(?:vlan )([0-9])+' | awk '{print $2}' | sort -nu)
 
-if [ ${#result[@]} -ne 0 ]; then
+if [ ${#vlans[@]} -ne 0 ]; then
   echo "VLANs found:"
-  for vlan in "${result[@]}"
-  do
+
+  for vlan in "${vlans[@]}"; do
     echo -e "\t -VLAN: $vlan"
+  done
+
+  for vlan in "${vlans[@]}"; do
+    echo -e "Scanning Vlan: $vlan"
+
+    # Set interface up
+    ip link add link $interface name $interface.$vlan type vlan id $vlan >/dev/null 2>&1
+    request_dhcp_address $interface.$vlan
   done
 else
   echo "No VLANs found"
