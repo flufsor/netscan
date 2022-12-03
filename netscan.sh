@@ -9,14 +9,14 @@ TCPDUMP_TIMEOUT=60
 IPFILTER='((192|172|10){1,3}\.){1}([0-9]{1,3}\.){2}(?!255)([0-9]{1,3})'
 PREFIXFILTER='((192|172|10){1,3}\.){1}([0-9]{1,3}\.){2}'
 
-function test_connection()
+function ShowHelp()
 {
-  # Ping test gateway
-  if ping -q -c 1 -W 1 "$1" >/dev/null; then
-    echo "IPv4 is up"
-  else
-    echo "IPv4 is down"
-  fi
+      echo "Usage: $0 [Options]"
+      echo "Options:"
+      echo "  -c  Cleanup after scan"
+      echo "  -i  Interface to scan"
+      echo "  -t  Timeout for tcpdump"
+      echo "  -h  Show this help"
 }
 
 # Check if the user is root
@@ -25,8 +25,11 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-while getopts ':i:t:h' opt; do
+while getopts ':ci:t:h' opt; do
   case "$opt" in
+    c)
+      CLEANUP=true;
+      ;;
     i)
       if [[ ! -d /sys/class/net/${OPTARG} ]]; then
         echo "Please provide a valid interface"
@@ -40,12 +43,12 @@ while getopts ':i:t:h' opt; do
       TCPDUMP_TIMEOUT=$OPTARG
       ;;
     h)
-      echo "Usage: $(basename "$0") -t <interface> [-i <vlan scan time>]"
+      ShowHelp
       exit 0
       ;;
-
     *)
-      echo -e "Invalid command option.\nUsage: $(basename "$0") -i <interface> [-t <vlan scan time>]"
+      echo -e "Invalid command option: -$OPTARG \n"
+      ShowHelp
       exit 1
       ;;
   esac
@@ -123,9 +126,11 @@ else
     timeout 2 dhclient -cf ./dhclient.conf -d -1 "$INTERFACE" &>/dev/null
 fi
 
-# Cleaning up vlan interfaces
-echo -e "\nCleaning Up"
 
-for vlan in "${vlans[@]}"; do
-  ip link del link dev "$INTERFACESHORT.$vlan"
-done
+if [ $CLEANUP == true ]; then
+  echo "Cleaning up"
+  ip link set "$INTERFACE" down
+  for vlan in "${vlans[@]}"; do
+    ip link delete "$INTERFACESHORT.$vlan"
+  done
+fi
