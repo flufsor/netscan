@@ -26,7 +26,6 @@ fi
 while getopts ':i:t:h' opt; do
   case "$opt" in
     i)
-      echo "Interface: $OPTARG"
       if [[ ! -d /sys/class/net/${OPTARG} ]]; then
         echo "Please provide a valid interface"
         exit 1
@@ -105,5 +104,5 @@ fi
 echo "Cleaning Up"
 
 for vlan in "${vlans[@]}"; do
-  ip link del link dev $interfaceShort.$vlan
+  ip link del link dev $INTERFACESHORT.$vlan
 done
