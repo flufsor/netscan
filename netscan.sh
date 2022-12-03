@@ -68,7 +68,7 @@ fi
 
 # Scan for VLANs
 echo "Starting VLAN scan for $TCPDUMP_TIMEOUT seconds"
-timeout $TCPDUMP_TIMEOUT tcpdump -nn -e vlan -i $INTERFACE > scans/tcpdump-$INTERFACE.log 2>/dev/null
+timeout $TCPDUMP_TIMEOUT tcpdump -nnt -e vlan -i $INTERFACE > scans/tcpdump-$INTERFACE.log 2>/dev/null
 mapfile -t vlans < <(cat scans/tcpdump-$INTERFACE.log  | grep -oP '(?:vlan )([0-9])+' | awk '{print $2}' | sort -nu)
 
 if [ ${#vlans[@]} -ne 0 ]; then
