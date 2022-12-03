@@ -33,6 +33,7 @@ else
     exit 1
   fi
   interface=$1
+  interfaceShort=$(echo $interface | cut -c -6) # Some interfaces are too long
 fi
 
 echo "Starting Netscan on $interface"
@@ -41,7 +42,6 @@ echo "Starting Netscan on $interface"
 if [ $(cat /sys/class/net/$interface/operstate) = "down" ]; then
   echo "Setting $interface up"
   ip link set $interface up
-  echo boo
 else 
   echo "Interface $interface is already up"
 fi
@@ -62,11 +62,11 @@ if [ ${#vlans[@]} -ne 0 ]; then
     echo -e "Scanning Vlan: $vlan"
 
     # Set interface up
-    ip link add link $interface name $interface.$vlan type vlan id $vlan >/dev/null 2>&1
+    ip link add link $interface name $interfaceShort.$vlan type vlan id $vlan >/dev/null 2>&1
     # Requst DHCP address
-    timeout 2 dhclient -cf ./dhclient.conf -d -1 $interface.$vlan &>/dev/null
+    timeout 2 dhclient -cf ./dhclient.conf -d -1 $interfaceShort.$vlan &>/dev/null
     # Check for successful DHCP request
-    ip=$(ip addr show $interface.$vlan | grep "inet " | awk '{print $2}')
+    ip=$(ip addr show $interfaceShort.$vlan | grep "inet " | awk '{print $2}')
 
     if [ -z "$ip" ]; then
       echo -e "\tCould not get ip address from DHCP server"
