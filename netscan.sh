@@ -98,7 +98,7 @@ if [ ${#vlans[@]} -ne 0 ]; then
       echo -e "\tTrying to find manual address"
 
       # Trying to find a manual address
-      FOUND_HOSTS=$(grep "vlan $vlan" "scans/tcpdump-ens19.log" | grep -Po "$IPFILTER" | sort -u)
+      FOUND_HOSTS=$(grep "vlan $vlan" "scans/tcpdump-$INTERFACE.log" | grep -Po "$IPFILTER" | sort -u)
       PREFIX=$(echo "$FOUND_HOSTS" | grep -Po "$PREFIXFILTER" | sort -u)
       FIRST_HOST=$(echo "$FOUND_HOSTS" | head -n 1)
 
