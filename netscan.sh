@@ -2,7 +2,7 @@
 # title         : netscan.sh
 # description   : A Network port scanner for linux.
 # author        : Tom Goedemé https://github.com/flufsor
-# usage         : ./netscan.sh -t <interface> [-i <vlan scan time>]
+# usage         : ./netscan.sh -i <interface> [-t <vlan scan time>]
 # ======================================================================================================================
 
 TCPDUMP_TIMEOUT=60
