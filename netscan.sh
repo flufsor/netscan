@@ -63,7 +63,7 @@ fi
 echo "Starting Netscan on $INTERFACE"
 
 # Set interface up
-if [ $(cat "/sys/class/net/$INTERFACE/operstate") = "down" ]; then
+if [ "$(cat "/sys/class/net/$INTERFACE/operstate")" = "down" ]; then
   echo "Setting $INTERFACE up"
   ip link set "$INTERFACE" up
 else 
@@ -127,7 +127,7 @@ else
 fi
 
 
-if [ $CLEANUP == true ]; then
+if [ "$CLEANUP" == true ]; then
   echo "Cleaning up"
   ip link set "$INTERFACE" down
   for vlan in "${vlans[@]}"; do
