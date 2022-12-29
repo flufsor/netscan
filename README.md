@@ -20,5 +20,5 @@ Required packages are:
 
 ## Credits:
 
--Tom Goedemé
--Jasper van Meel (AWK Hero)
+- Tom Goedemé
+- Jasper van Meel
