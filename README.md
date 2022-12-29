@@ -6,7 +6,7 @@ A Network port scanner for linux that can scan for accessible devices and tries 
 
 Execute the script with:
 
-    ./netscan.sh $interface
+    ./netscan.sh -i $interface
 
 - $Interface is the network interface to scan (eg: eth0, ens18)
 
