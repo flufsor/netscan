@@ -25,7 +25,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-while getopts ':ci:t:h' opt; do
+while getopts ':ci:rt:h' opt; do
   case "$opt" in
     c)
       CLEANUP=true;
@@ -38,7 +38,9 @@ while getopts ':ci:t:h' opt; do
       INTERFACE=$OPTARG
       INTERFACESHORT=$(echo "$INTERFACE" | cut -c -6) # Some interfaces are too long
       ;;
-
+    r)
+      TARRESULTS=true;
+      ;;
     t)
       TCPDUMP_TIMEOUT=$OPTARG
       ;;
@@ -70,6 +72,9 @@ else
   echo "Interface $INTERFACE is already up"
 fi
 
+# Start listening for LLDP packets
+lldptool -L -i "$INTERFACE" adminstatus=rx
+
 # Scan for VLANs
 echo "Starting VLAN scan for $TCPDUMP_TIMEOUT seconds"
 timeout "$TCPDUMP_TIMEOUT" tcpdump -nnt -e vlan -i "$INTERFACE" > "scans/tcpdump-$INTERFACE.log" 2>/dev/null
@@ -84,16 +89,16 @@ if [ ${#vlans[@]} -ne 0 ]; then
 
   echo -e "\nRequesting IP addresses for VLANs"
   for vlan in "${vlans[@]}"; do
-    echo -e "Scanning Vlan: $vlan"
+    echo -e "\nScanning Vlan: $vlan"
 
     # Set interface up
     ip link add link "$INTERFACE" name "$INTERFACESHORT.$vlan" type vlan id "$vlan" >/dev/null 2>&1
     # Requst DHCP address
     timeout 2 dhclient -cf ./dhclient.conf -d -1 "$INTERFACESHORT.$vlan" &>/dev/null
     # Check for successful DHCP request
-    ip=$(ip addr show "$INTERFACESHORT.$vlan" | grep "inet " | awk '{print $2}')
+    IP=$(ip addr show "$INTERFACESHORT.$vlan" | grep "inet " | awk '{print $2}')
 
-    if [ -z "$ip" ]; then
+    if [ -z "$IP" ]; then
       echo -e "\tCould not get ip address from DHCP server"
       echo -e "\tTrying to find manual address"
 
@@ -102,9 +107,9 @@ if [ ${#vlans[@]} -ne 0 ]; then
       PREFIX=$(echo "$FOUND_HOSTS" | grep -Po "$PREFIXFILTER" | sort -u)
       FIRST_HOST=$(echo "$FOUND_HOSTS" | head -n 1)
 
-      for IP_OCTET in {20..234}; do
-        if echo "$PREFIX$IP_OCTET" | grep -qv "$FOUND_HOSTS"; then
-          IP="$PREFIX$IP_OCTET"
+      for IP_LASTOCTET in {20..234}; do
+        if echo "$PREFIX$IP_LASTOCTET" | grep -qv "$FOUND_HOSTS"; then
+          IP="$PREFIX$IP_LASTOCTET"
           for NETMASK in {24,16,8}; do
             ip addr add "$IP/$NETMASK" dev "$INTERFACESHORT.$vlan"
             ip link set "$INTERFACESHORT.$vlan" up
@@ -117,19 +122,96 @@ if [ ${#vlans[@]} -ne 0 ]; then
           break
         fi
       done
+
+      if [ -z "$IP" ]; then
+        echo -e "\tCould not find manual address"
+      fi
     else
-      echo -e "\tGot DHCP ip: $ip"
+      echo -e "\tGot DHCP ip: $IP"
     fi
   done
 else
   echo "No VLANs found, trying native VLAN"
-    timeout 2 dhclient -cf ./dhclient.conf -d -1 "$INTERFACE" &>/dev/null
+  timeout 2 dhclient -cf ./dhclient.conf -d -1 "$INTERFACE" &>/dev/null
+  INTIP=$(ip addr show "$INTERFACE" | grep "inet " | awk '{print $2}')
+
+  if [ -z "$INTIP" ]; then
+    echo -e "\tCould not get ip address from DHCP server"
+    echo -e "\tTrying to find manual address"
+
+    # Trying to find a manual address
+    FOUND_HOSTS=$(grep -Po "$IPFILTER" "./scans/tcpdump-$INTERFACE.log" | sort -u)
+    PREFIX=$(echo "$FOUND_HOSTS" | grep -Po "$PREFIXFILTER" | sort -u)
+    FIRST_HOST=$(echo "$FOUND_HOSTS" | head -n 1)
+
+    for INTIP_LASTOCTET in {20..234}; do
+      if echo "$PREFIX$INTIP_LASTOCTET" | grep -qv "$FOUND_HOSTS"; then
+        IP="$PREFIX$INTIP_LASTOCTET"
+        for INTNETMASK in {24,16,8}; do
+          ip addr add "$INTIP/$INTNETMASK" dev "$INTERFACE"
+          # Test connection
+          if ping -c 1 "$FIRST_HOST" >/dev/null 2>&1; then
+            echo -e "\tFound manual address: $INTIP/$INTNETMASK"
+            break
+          fi
+        done
+        break
+      fi
+    done
+
+    if [ -z "$INTIP" ]; then
+      echo -e "\tCould not find manual address"
+    fi
+  else
+    echo -e "\tGot DHCP ip: $INTIP"
+  fi
+fi
+
+echo ""
+
+# Check LLDP Scans
+lldpcli show neighbors ports "$INTERFACE" > "./scans/lldp-$INTERFACE.log" 2>/dev/null
+LLDPMACS=$(grep -oE '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' scans/lldp-"$INTERFACE".log | sort -u)
+if [ -z "$LLDPMACS" ]; then
+  echo -e "\nNo LLDP servers found"
+else 
+  echo -e "\nFound $(echo "$LLDPMACS" | wc -l) LLDP servers"
+  for MAC in $LLDPMACS; do
+    echo -e "\t- $MAC"
+
+    awk -v MAC="$MAC" '
+    $0 ~ MAC {found=1}
+    found && $0 ~ /SysName: / {sysname=$2}
+    found && $0 ~ /SysDescr: / {sysdescr=substr($0, index($0, $2))}
+    found && $0 ~ /MgmtIP: / {mgmtip=$2}
+    sysname && sysdescr && mgmtip {
+        printf "\t\tSysName: %s\n", sysname;
+        printf "\t\tSysDescr: %s\n", sysdescr;
+        printf "\t\tMgmtIP: %s\n\n", mgmtip;
+        exit;
+    }
+    ' "./scans/lldp-$INTERFACE.log"
+  done 
+fi
+echo ""
+
+# Tar results
+if [ "$TARRESULTS" == true ]; then
+  date=$(date +"%Y-%m-%d_%H-%M-%S")
+  file="./scans/netscan-$INTERFACE-$date.tar.gz"
+  tar -czf "$file" ./results/{tcpdump,lldp}-"$INTERFACE".log
+  echo -e "Results are in $file\n\n"
 fi
 
 
 if [ "$CLEANUP" == true ]; then
   echo "Cleaning up"
   ip link set "$INTERFACE" down
+
+  if [ -z ${INTIP+x} ]; then
+    ip addr del "$INTIP" dev "$INTERFACE" 2>/dev/null
+  fi
+
   for vlan in "${vlans[@]}"; do
     ip link delete "$INTERFACESHORT.$vlan"
   done
