@@ -4,5 +4,8 @@
 # Logs
 *.log
 
+# Results
+results/*.tar.gz
+
 # test scripts
 test.sh
