@@ -26,6 +26,9 @@ function echoLog()
     echo "$@" >> scans/netscan.log
 }
 
+# Empty old netscan.log
+echo "" > scans/netscan.log
+
 # Check if the user is root
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run as root"
