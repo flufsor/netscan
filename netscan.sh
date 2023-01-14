@@ -72,8 +72,13 @@ else
   echo "Interface $INTERFACE is already up"
 fi
 
-# Start listening for LLDP packets
-lldptool -L -i "$INTERFACE" adminstatus=rx
+#  Set LLDPD to enable cdp and listen only
+if ! grep -q 'DAEMON_ARGS="-c -s -e"' "/etc/default/lldpd"; then
+    echo 'DAEMON_ARGS="-c -s -e"' >> "/etc/default/lldpd"
+fi
+
+# Start LLDPD
+systemctl restart lldpd
 
 # Scan for VLANs
 echo "Starting VLAN scan for $TCPDUMP_TIMEOUT seconds"
@@ -169,7 +174,7 @@ fi
 
 echo ""
 
-# Check LLDP Scans
+# Check LLDPD Scans
 lldpcli show neighbors ports "$INTERFACE" > "./scans/lldp-$INTERFACE.log" 2>/dev/null
 LLDPMACS=$(grep -oE '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' scans/lldp-"$INTERFACE".log | sort -u)
 if [ -z "$LLDPMACS" ]; then
@@ -203,6 +208,8 @@ if [ "$TARRESULTS" == true ]; then
   echo -e "Results are in $file\n\n"
 fi
 
+# Stop lldpd
+systemctl stop lldpd
 
 if [ "$CLEANUP" == true ]; then
   echo "Cleaning up"
